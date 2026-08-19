@@ -174,11 +174,11 @@ def get_db_data():
 def clear_db_logs():
     try:
         conn = mysql.connector.connect(
-            host="localhost",
-            user="root",
-            password="",
-            database="smart_door_db",
-            port=3307
+            host="mysql-3727e8f3-auniafrinaa06-9aec.a.aivencloud.com",
+            user="avnadmin",
+            password="AVNS_y1pg9gwZWmf1339ju2q",
+            database="defaultdb",
+            port=10110
         )
         cursor = conn.cursor()
         cursor.execute("TRUNCATE TABLE access_log;")
