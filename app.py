@@ -38,10 +38,23 @@ else:
     bg_style = "<style>.stApp { background-color: #2d0f1e; }</style>"
 
 # =========================================================
-# 🎨 CUSTOM CSS: PROTOTYPING ANIMATIONS
+# 🎨 CUSTOM CSS & ANTI-FADING OVERLAY
 # =========================================================
 st.markdown(bg_style + """
     <style>
+    /* 🚫 MATIKAN OVERLAY PUDAR / KELABU SEMASA AUTO-REFRESH */
+    .stAppRunning [data-testid="stVerticalBlock"] {
+        opacity: 1 !important;
+        transition: none !important;
+    }
+    .stAppRunning .js-plotly-plot {
+        opacity: 1 !important;
+    }
+    div[data-testid="stStatusWidget"] {
+        visibility: hidden;
+    }
+
+    /* ✨ ANIMASI & STYLING DASHBOARD */
     @keyframes prototypeEntry {
         0% { opacity: 0; transform: translateY(30px) scale(0.98); }
         100% { opacity: 1; transform: translateY(0) scale(1); }
@@ -151,42 +164,46 @@ def login_page():
                 else:
                     st.error("Invalid credentials. Please try again.")
 
-# Database Connection Function
+# Database Connection Helper Function
+def create_connection():
+    return mysql.connector.connect(
+        host="mysql-3727e8f3-auniafrinaa06-9aec.a.aivencloud.com",
+        user="avnadmin",
+        password="AVNS_y1pg9gwZWmf1339ju2q",
+        database="defaultdb",
+        port=10110
+    )
+
 def get_db_data():
+    conn = None
     try:
-        conn = mysql.connector.connect(
-            host="mysql-3727e8f3-auniafrinaa06-9aec.a.aivencloud.com",
-            user="avnadmin",
-            password="AVNS_y1pg9gwZWmf1339ju2q",
-            database="defaultdb",
-            port=10110
-        )
+        conn = create_connection()
         query = "SELECT id, uid_card, username, status, timestamp FROM access_log ORDER BY timestamp DESC"
         df = pd.read_sql(query, conn)
-        conn.close()
         return df
     except Exception as e:
         st.error(f"Database connection error: {e}")
         return pd.DataFrame()
+    finally:
+        if conn and conn.is_connected():
+            conn.close()
 
 # 🧹 FUNGSI UNTUK RESET / PADAM SEMUA DATABASE LOGS
 def clear_db_logs():
+    conn = None
     try:
-        conn = mysql.connector.connect(
-            host="mysql-3727e8f3-auniafrinaa06-9aec.a.aivencloud.com",
-            user="avnadmin",
-            password="AVNS_y1pg9gwZWmf1339ju2q",
-            database="defaultdb",
-            port=10110
-        )
+        conn = create_connection()
         cursor = conn.cursor()
         cursor.execute("TRUNCATE TABLE access_log;")
         conn.commit()
-        conn.close()
+        cursor.close()
         return True
     except Exception as e:
         st.error(f"Failed to reset logs: {e}")
         return False
+    finally:
+        if conn and conn.is_connected():
+            conn.close()
 
 # 🛠️ FUNGSI PENGELOMPOKAN KATEGORI
 def map_access_category(row):
@@ -206,6 +223,7 @@ def map_access_category(row):
 
 # 📊 MAIN DASHBOARD
 def main_dashboard():
+    # Refresh data setiap 3 saat
     st_autorefresh(interval=3000, key="datarefresh")
 
     # SIDEBAR
@@ -268,7 +286,12 @@ def main_dashboard():
                 color_discrete_map={'SUCCESS': '#f472b6', 'FAILED': '#be185d'},
                 hole=0.45
             )
-            fig_pie.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="#f1f5f9", margin=dict(t=40, b=0, l=0, r=0))
+            fig_pie.update_layout(
+                paper_bgcolor="rgba(0,0,0,0)", 
+                plot_bgcolor="rgba(0,0,0,0)", 
+                font_color="#f1f5f9", 
+                margin=dict(t=40, b=0, l=0, r=0)
+            )
             st.plotly_chart(fig_pie, use_container_width=True)
 
         with chart_col2:
@@ -305,7 +328,7 @@ def main_dashboard():
             color = '#f472b6' if val == 'SUCCESS' else '#ef4444' if val == 'FAILED' else ''
             return f'color: {color}; font-weight: bold;'
 
-        # Gunakan applymap untuk serasi dengan mana-mana versi Pandas
+        # Compatible Styler for Pandas 1.x & 2.x
         try:
             styled_df = display_df.style.map(color_status, subset=['Access Status'])
         except AttributeError:
