@@ -3,7 +3,6 @@ import mysql.connector
 import pandas as pd
 import base64
 import plotly.express as px
-from datetime import datetime
 from streamlit_autorefresh import st_autorefresh
 
 # 1. Page Configuration
@@ -306,7 +305,12 @@ def main_dashboard():
             color = '#f472b6' if val == 'SUCCESS' else '#ef4444' if val == 'FAILED' else ''
             return f'color: {color}; font-weight: bold;'
 
-        styled_df = display_df.style.map(color_status, subset=['Access Status'])
+        # Gunakan applymap untuk serasi dengan mana-mana versi Pandas
+        try:
+            styled_df = display_df.style.map(color_status, subset=['Access Status'])
+        except AttributeError:
+            styled_df = display_df.style.applymap(color_status, subset=['Access Status'])
+            
         st.dataframe(styled_df, use_container_width=True, height=400)
 
     else:
