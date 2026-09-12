@@ -185,6 +185,41 @@ def get_db_data():
         if conn and conn.is_connected():
             conn.close()
 
+# ➕ FUNGSI SIMPAN PENGGUNA BARU KE MYSQL
+def register_new_user(user_name, cred_type, cred_id):
+    conn = None
+    try:
+        conn = create_connection()
+        cursor = conn.cursor()
+        sql = "INSERT INTO registered_users (username, credential_type, credential_id) VALUES (%s, %s, %s)"
+        cursor.execute(sql, (user_name, cred_type, cred_id))
+        conn.commit()
+        cursor.close()
+        return True
+    except mysql.connector.Error as err:
+        st.error(f"Ralat Pendaftaran: {err}")
+        return False
+    finally:
+        if conn and conn.is_connected():
+            conn.close()
+
+# 📋 FUNGSI AMBIL SENARAI PENGGUNA BERDAFTAR
+def get_registered_users():
+    conn = None
+    try:
+        conn = create_connection()
+        query = "SELECT id, username, credential_type, credential_id, created_at FROM registered_users ORDER BY created_at DESC"
+        df = pd.read_sql(query, conn)
+        if not df.empty and 'created_at' in df.columns:
+            df['created_at'] = pd.to_datetime(df['created_at']) + pd.Timedelta(hours=8)
+            df['created_at'] = df['created_at'].dt.strftime('%Y-%m-%d %H:%M:%S')
+        return df
+    except Exception as e:
+        return pd.DataFrame()
+    finally:
+        if conn and conn.is_connected():
+            conn.close()
+
 # 🧹 FUNGSI UNTUK RESET / PADAM SEMUA DATABASE LOGS
 def clear_db_logs():
     conn = None
@@ -207,23 +242,50 @@ def main_dashboard():
     # Refresh data setiap 3 saat
     st_autorefresh(interval=3000, key="datarefresh")
 
-    # SIDEBAR
+    # SIDEBAR CONTROL PANEL
     with st.sidebar:
-        st.title("🌸 System Portal")
+        st.markdown("<h2 style='color: #f472b6; margin-bottom: 0px;'>🌸 System Portal</h2>", unsafe_allow_html=True)
         st.caption("Owner & Admin Control Panel")
         st.markdown("---")
         
-        st.subheader("⚙️ System Actions")
+        # 👥 SECTION 1: ADD NEW USER / CREDENTIAL
+        st.markdown("<h3 style='color: #f9a8d4; font-size: 18px;'>👥 User Management</h3>", unsafe_allow_html=True)
         
-        # 🚨 POP-UP PENGESAHAN PADAM LOG
-        with st.expander("🗑️ Reset Database Logs"):
+        with st.expander("➕ Tambah Pengguna Baru", expanded=True):
+            with st.form("add_user_sidebar_form", clear_on_submit=True):
+                new_username = st.text_input("Nama Pengguna", placeholder="cth: Auni / Ahmad")
+                cred_type = st.selectbox("Jenis Akses", ["RFID Card", "Fingerprint"])
+                
+                if cred_type == "RFID Card":
+                    cred_id = st.text_input("UID Kad RFID", placeholder="cth: 621C2B5C")
+                else:
+                    cred_id = st.text_input("ID Cap Jari", placeholder="cth: 1, 2, 3...")
+                
+                submit_user = st.form_submit_button("✨ Daftar Pengguna")
+                
+                if submit_user:
+                    if new_username.strip() and cred_id.strip():
+                        type_code = "RFID" if cred_type == "RFID Card" else "FINGERPRINT"
+                        if register_new_user(new_username.strip(), type_code, cred_id.strip().upper()):
+                            st.success(f"Berjaya daftar {new_username}!")
+                            st.rerun()
+                    else:
+                        st.error("Sila lengkapkan semua ruangan!")
+
+        st.markdown("---")
+        
+        # ⚙️ SECTION 2: SYSTEM ACTIONS
+        st.markdown("<h3 style='color: #f9a8d4; font-size: 18px;'>⚙️ System Actions</h3>", unsafe_allow_html=True)
+        
+        with st.expander("🗑️ Reset Database Logs", expanded=False):
             st.warning("⚠️ Adakah anda pasti? Semua log rekod akan dipadam kekal!")
             if st.button("🔴 Confirm Reset All"):
                 if clear_db_logs():
                     st.success("Semua log telah berjaya dipadam!")
                     st.rerun()
 
-        st.markdown("---")
+        st.markdown("<br>", unsafe_allow_html=True)
+        
         if st.button("🚪 Logout"):
             st.session_state["logged_in"] = False
             st.rerun()
@@ -232,69 +294,84 @@ def main_dashboard():
     st.markdown('<div class="main-title">🔑 Smart Door Access System</div>', unsafe_allow_html=True)
     st.markdown('<div class="sub-title">Real-Time Access Control & Monitoring Dashboard</div>', unsafe_allow_html=True)
 
-    df = get_db_data()
+    # TAB NAVIGATION (LOGS & PENGGUNA BERDAFTAR)
+    tab1, tab2 = st.tabs(["📊 Real-Time Logs", "👥 Senarai Pengguna Berdaftar"])
 
-    if not df.empty:
-        # METRICS OVERVIEW
-        total_logs = len(df)
-        success_logs = len(df[df['status'] == 'SUCCESS'])
-        failed_logs = len(df[df['status'] == 'FAILED'])
-        
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric(label="📊 Total Scans", value=total_logs)
-        with col2:
-            st.metric(label="✅ Access Granted", value=success_logs)
-        with col3:
-            st.metric(label="❌ Access Denied", value=failed_logs)
+    # TAB 1: REKOD LOGS AKSE
+    with tab1:
+        df = get_db_data()
 
-        st.markdown("---")
-
-        # CHARTS SECTION (PIE / DONUT CHART SAHAJA)
-        st.subheader("📈 Access Analytics")
-        
-        status_counts = df['status'].value_counts().reset_index()
-        status_counts.columns = ['Status', 'Total']
-        
-        fig_pie = px.pie(
-            status_counts, 
-            names='Status', 
-            values='Total', 
-            title="Access Ratio",
-            color='Status',
-            color_discrete_map={'SUCCESS': '#f472b6', 'FAILED': '#be185d'},
-            hole=0.45
-        )
-        fig_pie.update_layout(
-            paper_bgcolor="rgba(0,0,0,0)", 
-            plot_bgcolor="rgba(0,0,0,0)", 
-            font_color="#f1f5f9", 
-            margin=dict(t=40, b=10, l=0, r=0)
-        )
-        st.plotly_chart(fig_pie, use_container_width=True)
-
-        st.markdown("---")
-
-        # LOGS TABLE
-        st.subheader("📋 Recent Access Logs")
-        
-        display_df = df[['id', 'uid_card', 'username', 'status', 'timestamp']].copy()
-        display_df.columns = ['ID', 'UID / Input', 'Username', 'Access Status', 'Date & Time']
-
-        def color_status(val):
-            color = '#f472b6' if val == 'SUCCESS' else '#ef4444' if val == 'FAILED' else ''
-            return f'color: {color}; font-weight: bold;'
-
-        # Compatible Styler for Pandas 1.x & 2.x
-        try:
-            styled_df = display_df.style.map(color_status, subset=['Access Status'])
-        except AttributeError:
-            styled_df = display_df.style.applymap(color_status, subset=['Access Status'])
+        if not df.empty:
+            # METRICS OVERVIEW
+            total_logs = len(df)
+            success_logs = len(df[df['status'] == 'SUCCESS'])
+            failed_logs = len(df[df['status'] == 'FAILED'])
             
-        st.dataframe(styled_df, use_container_width=True, height=400)
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric(label="📊 Total Scans", value=total_logs)
+            with col2:
+                st.metric(label="✅ Access Granted", value=success_logs)
+            with col3:
+                st.metric(label="❌ Access Denied", value=failed_logs)
 
-    else:
-        st.info("No access log records found in the database. (System is clean)")
+            st.markdown("---")
+
+            # CHARTS SECTION (PIE / DONUT CHART SAHAJA)
+            st.subheader("📈 Access Analytics")
+            
+            status_counts = df['status'].value_counts().reset_index()
+            status_counts.columns = ['Status', 'Total']
+            
+            fig_pie = px.pie(
+                status_counts, 
+                names='Status', 
+                values='Total', 
+                title="Access Ratio",
+                color='Status',
+                color_discrete_map={'SUCCESS': '#f472b6', 'FAILED': '#be185d'},
+                hole=0.45
+            )
+            fig_pie.update_layout(
+                paper_bgcolor="rgba(0,0,0,0)", 
+                plot_bgcolor="rgba(0,0,0,0)", 
+                font_color="#f1f5f9", 
+                margin=dict(t=40, b=10, l=0, r=0)
+            )
+            st.plotly_chart(fig_pie, use_container_width=True)
+
+            st.markdown("---")
+
+            # LOGS TABLE
+            st.subheader("📋 Recent Access Logs")
+            
+            display_df = df[['id', 'uid_card', 'username', 'status', 'timestamp']].copy()
+            display_df.columns = ['ID', 'UID / Input', 'Username', 'Access Status', 'Date & Time']
+
+            def color_status(val):
+                color = '#f472b6' if val == 'SUCCESS' else '#ef4444' if val == 'FAILED' else ''
+                return f'color: {color}; font-weight: bold;'
+
+            try:
+                styled_df = display_df.style.map(color_status, subset=['Access Status'])
+            except AttributeError:
+                styled_df = display_df.style.applymap(color_status, subset=['Access Status'])
+                
+            st.dataframe(styled_df, use_container_width=True, height=400)
+
+        else:
+            st.info("No access log records found in the database. (System is clean)")
+
+    # TAB 2: SENARAI PENGGUNA BERDAFTAR
+    with tab2:
+        st.subheader("👥 Senarai Kad RFID & Cap Jari Berdaftar")
+        reg_df = get_registered_users()
+        
+        if not reg_df.empty:
+            reg_df.columns = ['ID', 'Nama Pengguna', 'Jenis Akses', 'UID / ID Jari', 'Tarikh Daftar']
+            st.dataframe(reg_df, use_container_width=True, height=400)
+        else:
+            st.info("Belum ada pengguna berdaftar dalam database. Gunakan borang di sidebar untuk mendaftar.")
 
 # PAGE ROUTING
 if st.session_state["logged_in"]:
