@@ -185,68 +185,6 @@ def get_db_data():
         if conn and conn.is_connected():
             conn.close()
 
-# ➕ FUNGSI SIMPAN PENGGUNA BARU KE MYSQL
-def register_new_user(user_name, cred_type, cred_id):
-    conn = None
-    try:
-        conn = create_connection()
-        cursor = conn.cursor()
-        sql = "INSERT INTO registered_users (username, credential_type, credential_id) VALUES (%s, %s, %s)"
-        cursor.execute(sql, (user_name, cred_type, cred_id))
-        conn.commit()
-        cursor.close()
-        return True
-    except mysql.connector.Error as err:
-        st.error(f"Ralat Pendaftaran: {err}")
-        return False
-    finally:
-        if conn and conn.is_connected():
-            conn.close()
-
-# 📋 FUNGSI AMBIL SENARAI PENGGUNA BERDAFTAR
-def get_registered_users():
-    conn = None
-    try:
-        conn = create_connection()
-        query = "SELECT id, username, credential_type, credential_id, created_at FROM registered_users ORDER BY created_at DESC"
-        df = pd.read_sql(query, conn)
-        if not df.empty and 'created_at' in df.columns:
-            df['created_at'] = pd.to_datetime(df['created_at']) + pd.Timedelta(hours=8)
-            df['created_at'] = df['created_at'].dt.strftime('%Y-%m-%d %H:%M:%S')
-        return df
-    except Exception as e:
-        return pd.DataFrame()
-    finally:
-        if conn and conn.is_connected():
-            conn.close()
-
-# 🗑️ FUNGSI DENGAN AUTO-COMMIT TERUS UNTUK MEMADAM PENGGUNA
-def delete_registered_user(user_id):
-    conn = None
-    try:
-        conn = create_connection()
-        conn.autocommit = True  # Paksa MySQL terus commit operasi DELETE
-        cursor = conn.cursor()
-        
-        # SQL DELETE menggunakan cast integer
-        sql = "DELETE FROM registered_users WHERE id = %s"
-        cursor.execute(sql, (int(user_id),))
-        
-        rows_affected = cursor.rowcount
-        cursor.close()
-        
-        if rows_affected > 0:
-            return True
-        else:
-            st.warning(f"ID {user_id} tidak ditemui dalam database.")
-            return False
-    except Exception as e:
-        st.error(f"Ralat Padam: {e}")
-        return False
-    finally:
-        if conn and conn.is_connected():
-            conn.close()
-
 # 🧹 FUNGSI UNTUK RESET / PADAM SEMUA DATABASE LOGS
 def clear_db_logs():
     conn = None
@@ -275,33 +213,7 @@ def main_dashboard():
         st.caption("Owner & Admin Control Panel")
         st.markdown("---")
         
-        # 👥 SECTION 1: ADD NEW USER / CREDENTIAL
-        st.markdown("<h3 style='color: #f9a8d4; font-size: 18px;'>👥 User Management</h3>", unsafe_allow_html=True)
-        
-        with st.expander("➕ Tambah Pengguna Baru", expanded=True):
-            with st.form("add_user_sidebar_form", clear_on_submit=True):
-                new_username = st.text_input("Nama Pengguna", placeholder="cth: Auni / Ahmad")
-                cred_type = st.selectbox("Jenis Akses", ["RFID Card", "Fingerprint"])
-                
-                if cred_type == "RFID Card":
-                    cred_id = st.text_input("UID Kad RFID", placeholder="cth: 621C2B5C")
-                else:
-                    cred_id = st.text_input("ID Cap Jari", placeholder="cth: 1, 2, 3...")
-                
-                submit_user = st.form_submit_button("✨ Daftar Pengguna")
-                
-                if submit_user:
-                    if new_username.strip() and cred_id.strip():
-                        type_code = "RFID" if cred_type == "RFID Card" else "FINGERPRINT"
-                        if register_new_user(new_username.strip(), type_code, cred_id.strip().upper()):
-                            st.success(f"Berjaya daftar {new_username}!")
-                            st.rerun()
-                    else:
-                        st.error("Sila lengkapkan semua ruangan!")
-
-        st.markdown("---")
-        
-        # ⚙️ SECTION 2: SYSTEM ACTIONS
+        # ⚙️ SYSTEM ACTIONS
         st.markdown("<h3 style='color: #f9a8d4; font-size: 18px;'>⚙️ System Actions</h3>", unsafe_allow_html=True)
         
         with st.expander("🗑️ Reset Database Logs", expanded=False):
@@ -321,109 +233,69 @@ def main_dashboard():
     st.markdown('<div class="main-title">🔑 Smart Door Access System</div>', unsafe_allow_html=True)
     st.markdown('<div class="sub-title">Real-Time Access Control & Monitoring Dashboard</div>', unsafe_allow_html=True)
 
-    # TAB NAVIGATION (LOGS & PENGGUNA BERDAFTAR)
-    tab1, tab2 = st.tabs(["📊 Real-Time Logs", "👥 Senarai Pengguna Berdaftar"])
+    # REKOD LOGS AKSES
+    df = get_db_data()
 
-    # TAB 1: REKOD LOGS AKSES
-    with tab1:
-        df = get_db_data()
-
-        if not df.empty:
-            # METRICS OVERVIEW
-            total_logs = len(df)
-            success_logs = len(df[df['status'] == 'SUCCESS'])
-            failed_logs = len(df[df['status'] == 'FAILED'])
-            
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric(label="📊 Total Scans", value=total_logs)
-            with col2:
-                st.metric(label="✅ Access Granted", value=success_logs)
-            with col3:
-                st.metric(label="❌ Access Denied", value=failed_logs)
-
-            st.markdown("---")
-
-            # CHARTS SECTION (PIE / DONUT CHART SAHAJA)
-            st.subheader("📈 Access Analytics")
-            
-            status_counts = df['status'].value_counts().reset_index()
-            status_counts.columns = ['Status', 'Total']
-            
-            fig_pie = px.pie(
-                status_counts, 
-                names='Status', 
-                values='Total', 
-                title="Access Ratio",
-                color='Status',
-                color_discrete_map={'SUCCESS': '#f472b6', 'FAILED': '#be185d'},
-                hole=0.45
-            )
-            fig_pie.update_layout(
-                paper_bgcolor="rgba(0,0,0,0)", 
-                plot_bgcolor="rgba(0,0,0,0)", 
-                font_color="#f1f5f9", 
-                margin=dict(t=40, b=10, l=0, r=0)
-            )
-            st.plotly_chart(fig_pie, use_container_width=True)
-
-            st.markdown("---")
-
-            # LOGS TABLE
-            st.subheader("📋 Recent Access Logs")
-            
-            display_df = df[['id', 'uid_card', 'username', 'status', 'timestamp']].copy()
-            display_df.columns = ['ID', 'UID / Input', 'Username', 'Access Status', 'Date & Time']
-
-            def color_status(val):
-                color = '#f472b6' if val == 'SUCCESS' else '#ef4444' if val == 'FAILED' else ''
-                return f'color: {color}; font-weight: bold;'
-
-            try:
-                styled_df = display_df.style.map(color_status, subset=['Access Status'])
-            except AttributeError:
-                styled_df = display_df.style.applymap(color_status, subset=['Access Status'])
-                
-            st.dataframe(styled_df, use_container_width=True, height=400)
-
-        else:
-            st.info("No access log records found in the database. (System is clean)")
-
-    # TAB 2: SENARAI PENGGUNA BERDAFTAR & PADAM USER
-    with tab2:
-        st.subheader("👥 Pengurusan Pengguna Berdaftar")
-        reg_df = get_registered_users()
+    if not df.empty:
+        # METRICS OVERVIEW
+        total_logs = len(df)
+        success_logs = len(df[df['status'] == 'SUCCESS'])
+        failed_logs = len(df[df['status'] == 'FAILED'])
         
-        if not reg_df.empty:
-            # 1. Borang Padam Pengguna Berdasarkan ID
-            with st.expander("🗑️ Padam Pengguna (Masukkan ID)", expanded=True):
-                with st.form("delete_user_form", clear_on_submit=False):
-                    st.caption("Rujuk lajur **ID** pada jadual di bawah, masukkan ID pengguna yang hendak dipadam:")
-                    
-                    id_to_delete = st.number_input(
-                        "Masukkan ID Pengguna:", 
-                        min_value=1, 
-                        step=1, 
-                        value=int(reg_df['id'].iloc[0]) if not reg_df.empty else 1
-                    )
-                    
-                    btn_delete = st.form_submit_button("🔴 Padam Pengguna Ini")
-                    
-                    if btn_delete:
-                        if delete_registered_user(id_to_delete):
-                            st.success(f"Pengguna ID {id_to_delete} telah BERJAYA dipadam dari database!")
-                            st.rerun()
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric(label="📊 Total Scans", value=total_logs)
+        with col2:
+            st.metric(label="✅ Access Granted", value=success_logs)
+        with col3:
+            st.metric(label="❌ Access Denied", value=failed_logs)
 
-            st.markdown("---")
+        st.markdown("---")
+
+        # CHARTS SECTION (PIE / DONUT CHART SAHAJA)
+        st.subheader("📈 Access Analytics")
+        
+        status_counts = df['status'].value_counts().reset_index()
+        status_counts.columns = ['Status', 'Total']
+        
+        fig_pie = px.pie(
+            status_counts, 
+            names='Status', 
+            values='Total', 
+            title="Access Ratio",
+            color='Status',
+            color_discrete_map={'SUCCESS': '#f472b6', 'FAILED': '#be185d'},
+            hole=0.45
+        )
+        fig_pie.update_layout(
+            paper_bgcolor="rgba(0,0,0,0)", 
+            plot_bgcolor="rgba(0,0,0,0)", 
+            font_color="#f1f5f9", 
+            margin=dict(t=40, b=10, l=0, r=0)
+        )
+        st.plotly_chart(fig_pie, use_container_width=True)
+
+        st.markdown("---")
+
+        # LOGS TABLE
+        st.subheader("📋 Recent Access Logs")
+        
+        display_df = df[['id', 'uid_card', 'username', 'status', 'timestamp']].copy()
+        display_df.columns = ['ID', 'UID / Input', 'Username', 'Access Status', 'Date & Time']
+
+        def color_status(val):
+            color = '#f472b6' if val == 'SUCCESS' else '#ef4444' if val == 'FAILED' else ''
+            return f'color: {color}; font-weight: bold;'
+
+        try:
+            styled_df = display_df.style.map(color_status, subset=['Access Status'])
+        except AttributeError:
+            styled_df = display_df.style.applymap(color_status, subset=['Access Status'])
             
-            # 2. Jadual Senarai Pengguna
-            st.markdown("##### 📜 Senarai Pengguna Dalam Database")
-            display_reg = reg_df.copy()
-            display_reg.columns = ['ID', 'Nama Pengguna', 'Jenis Akses', 'UID / ID Jari', 'Tarikh Daftar']
-            st.dataframe(display_reg, use_container_width=True, height=350)
+        st.dataframe(styled_df, use_container_width=True, height=450)
 
-        else:
-            st.info("Belum ada pengguna berdaftar dalam database. Gunakan borang di sidebar untuk mendaftar.")
+    else:
+        st.info("No access log records found in the database. (System is clean)")
 
 # PAGE ROUTING
 if st.session_state["logged_in"]:
