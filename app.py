@@ -220,6 +220,24 @@ def get_registered_users():
         if conn and conn.is_connected():
             conn.close()
 
+# 🗑️ FUNGSI UNTUK PADAM PENGGUNA INDIVIDU DARI REGISTERED_USERS
+def delete_registered_user(user_id):
+    conn = None
+    try:
+        conn = create_connection()
+        cursor = conn.cursor()
+        sql = "DELETE FROM registered_users WHERE id = %s"
+        cursor.execute(sql, (user_id,))
+        conn.commit()
+        cursor.close()
+        return True
+    except Exception as e:
+        st.error(f"Failed to delete user: {e}")
+        return False
+    finally:
+        if conn and conn.is_connected():
+            conn.close()
+
 # 🧹 FUNGSI UNTUK RESET / PADAM SEMUA DATABASE LOGS
 def clear_db_logs():
     conn = None
@@ -362,14 +380,37 @@ def main_dashboard():
         else:
             st.info("No access log records found in the database. (System is clean)")
 
-    # TAB 2: SENARAI PENGGUNA BERDAFTAR
+    # TAB 2: SENARAI PENGGUNA BERDAFTAR & PADAM USER
     with tab2:
-        st.subheader("👥 Senarai Kad RFID & Cap Jari Berdaftar")
+        st.subheader("👥 Pengurusan Pengguna Berdaftar")
         reg_df = get_registered_users()
         
         if not reg_df.empty:
-            reg_df.columns = ['ID', 'Nama Pengguna', 'Jenis Akses', 'UID / ID Jari', 'Tarikh Daftar']
-            st.dataframe(reg_df, use_container_width=True, height=400)
+            col_list, col_del = st.columns([2.2, 1])
+            
+            with col_list:
+                st.markdown("##### 📜 Senarai Pengguna Dalam Database")
+                display_reg = reg_df.copy()
+                display_reg.columns = ['ID', 'Nama Pengguna', 'Jenis Akses', 'UID / ID Jari', 'Tarikh Daftar']
+                st.dataframe(display_reg, use_container_width=True, height=350)
+                
+            with col_del:
+                st.markdown("##### 🗑️ Padam Pengguna")
+                st.caption("Pilih pengguna di bawah untuk memadam akses mereka.")
+                
+                # Buat pilihan gabungan ID dan Nama
+                user_options = {
+                    f"{row['username']} ({row['credential_type']} - {row['credential_id']})": row['id']
+                    for _, row in reg_df.iterrows()
+                }
+                
+                selected_user_label = st.selectbox("Pilih Pengguna", list(user_options.keys()))
+                
+                if st.button("🔴 Padam Pengguna Ini"):
+                    target_id = user_options[selected_user_label]
+                    if delete_registered_user(target_id):
+                        st.success(f"Pengguna berjaya dipadam!")
+                        st.rerun()
         else:
             st.info("Belum ada pengguna berdaftar dalam database. Gunakan borang di sidebar untuk mendaftar.")
 
