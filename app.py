@@ -220,19 +220,28 @@ def get_registered_users():
         if conn and conn.is_connected():
             conn.close()
 
-# 🗑️ FUNGSI UNTUK PADAM PENGGUNA INDIVIDU DARI REGISTERED_USERS
+# 🗑️ FUNGSI DENGAN AUTO-COMMIT TERUS UNTUK MEMADAM PENGGUNA
 def delete_registered_user(user_id):
     conn = None
     try:
         conn = create_connection()
+        conn.autocommit = True  # Paksa MySQL terus commit operasi DELETE
         cursor = conn.cursor()
+        
+        # SQL DELETE menggunakan cast integer
         sql = "DELETE FROM registered_users WHERE id = %s"
         cursor.execute(sql, (int(user_id),))
-        conn.commit()
+        
+        rows_affected = cursor.rowcount
         cursor.close()
-        return True
+        
+        if rows_affected > 0:
+            return True
+        else:
+            st.warning(f"ID {user_id} tidak ditemui dalam database.")
+            return False
     except Exception as e:
-        st.error(f"Gagal memadam pengguna: {e}")
+        st.error(f"Ralat Padam: {e}")
         return False
     finally:
         if conn and conn.is_connected():
@@ -386,26 +395,28 @@ def main_dashboard():
         reg_df = get_registered_users()
         
         if not reg_df.empty:
-            # Bahagian 1: Borang Padam Pengguna (Disimpan dalam Form supaya stabil dari auto-refresh)
-            with st.expander("🗑️ Padam Pengguna Berdaftar", expanded=True):
+            # 1. Borang Padam Pengguna Berdasarkan ID
+            with st.expander("🗑️ Padam Pengguna (Masukkan ID)", expanded=True):
                 with st.form("delete_user_form", clear_on_submit=False):
-                    user_options = {
-                        f"ID: {row['id']} | {row['username']} ({row['credential_type']} - {row['credential_id']})": row['id']
-                        for _, row in reg_df.iterrows()
-                    }
+                    st.caption("Rujuk lajur **ID** pada jadual di bawah, masukkan ID pengguna yang hendak dipadam:")
                     
-                    selected_label = st.selectbox("Pilih Pengguna Untuk Dipadam:", list(user_options.keys()))
+                    id_to_delete = st.number_input(
+                        "Masukkan ID Pengguna:", 
+                        min_value=1, 
+                        step=1, 
+                        value=int(reg_df['id'].iloc[0]) if not reg_df.empty else 1
+                    )
+                    
                     btn_delete = st.form_submit_button("🔴 Padam Pengguna Ini")
                     
                     if btn_delete:
-                        target_id = user_options[selected_label]
-                        if delete_registered_user(target_id):
-                            st.success(f"Pengguna ID {target_id} berjaya dipadam!")
+                        if delete_registered_user(id_to_delete):
+                            st.success(f"Pengguna ID {id_to_delete} telah BERJAYA dipadam dari database!")
                             st.rerun()
 
             st.markdown("---")
             
-            # Bahagian 2: Jadual Senarai Pengguna Berdaftar (Penuh & Kemas)
+            # 2. Jadual Senarai Pengguna
             st.markdown("##### 📜 Senarai Pengguna Dalam Database")
             display_reg = reg_df.copy()
             display_reg.columns = ['ID', 'Nama Pengguna', 'Jenis Akses', 'UID / ID Jari', 'Tarikh Daftar']
