@@ -98,12 +98,12 @@ def get_db_data():
         if conn and conn.is_connected():
             conn.close()
 
-# FUNGSI MEWARNAKAN STATUS JADUAL
+# Fungsi warna status (SUCCESS = Hijau, FAILED = Merah)
 def color_status(val):
     if str(val).upper() in ['SUCCESS', 'GRANTED', 'SUCCESSFUL']:
-        return 'color: #2e7d32; font-weight: bold;'  # Hijau
+        return 'color: #2e7d32; font-weight: bold;'
     elif str(val).upper() in ['FAILED', 'DENIED']:
-        return 'color: #c62828; font-weight: bold;'  # Merah
+        return 'color: #c62828; font-weight: bold;'
     return ''
 
 # ---------------------------------------------------------
@@ -216,11 +216,11 @@ def main_dashboard():
 
             st.markdown("---")
 
-            # BAHAIGAN PIE CHART & LOG JADUAL
-            chart_col, log_col = st.columns([1, 1.5])
+            # SUSUNAN: PIE CHART (KIRI) + JADUAL LOG (KANAN)
+            chart_col, log_col = st.columns([1, 1.6])
             
             with chart_col:
-                st.subheader("📊 Access Status Distribution")
+                st.subheader("📊 Access Status")
                 status_counts = df['status'].value_counts().reset_index()
                 status_counts.columns = ['Status', 'Count']
                 
@@ -235,12 +235,14 @@ def main_dashboard():
                         'GRANTED': '#2e7d32', 
                         'DENIED': '#c62828'
                     },
-                    hole=0.4
+                    hole=0.45
                 )
                 fig.update_layout(
                     paper_bgcolor='rgba(0,0,0,0)',
                     plot_bgcolor='rgba(0,0,0,0)',
-                    font=dict(color='#fbcfe8')
+                    font=dict(color='#fbcfe8'),
+                    margin=dict(t=10, b=10, l=10, r=10),
+                    height=350
                 )
                 st.plotly_chart(fig, use_container_width=True)
 
