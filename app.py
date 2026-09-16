@@ -303,4 +303,4 @@ if st.session_state["logged_in"]:
 else:
     login_page()
 
-lepastu ni tambah feature delete untuk register dekat hardware tu , nak hubungkan dia cena
+
