@@ -17,66 +17,23 @@ def get_db_connection():
     return mysql.connector.connect(**DB_CONFIG)
 
 # =========================================================
-# 1. API UNTUK DAFTAR USER BAHARU (DARI ESP32 MOD ENROLL)
-# =========================================================
-@app.route('/api/register', methods=['POST'])
-def register_user():
-    try:
-        uid_card = request.form.get('uid_card')
-        username = request.form.get('username')
-        user_type = request.form.get('user_type', 'RFID')  # Contoh: RFID atau FINGERPRINT
-
-        if not uid_card or not username:
-            return "MISSING_PARAMS", 400
-
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Simpan atau kemas kini jika UID sudah sedia ada
-        query = """
-            INSERT INTO registered_users (uid_card, username, user_type) 
-            VALUES (%s, %s, %s)
-            ON DUPLICATE KEY UPDATE username = %s, user_type = %s
-        """
-        cursor.execute(query, (uid_card, username, user_type, username, user_type))
-        conn.commit()
-        
-        cursor.close()
-        conn.close()
-        return "REGISTER_SUCCESS", 200
-
-    except Exception as e:
-        return f"ERROR: {str(e)}", 500
-
-# =========================================================
-# 2. API UNTUK SEMAK STATUS & LOG AKSES (LOGIK PENTING)
+# API UNTUK SIMPAN LOG AKSES DARI ESP32
 # =========================================================
 @app.route('/api/log', methods=['POST'])
 def insert_log():
     try:
-        uid_card = request.form.get('uid_card')
+        # Ambil terus data yang dihantar dari ESP32
+        uid_card = request.form.get('uid_card', 'UNKNOWN_UID')
+        status = request.form.get('status', 'SUCCESS')
+        username = request.form.get('username', 'Pelawat')
 
         if not uid_card:
             return "MISSING_PARAMS", 400
 
         conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
+        cursor = conn.cursor()
 
-        # 🔍 SEMAK SAMA ADA UID MASIH WUJUD DALAM REGISTERED_USERS
-        check_query = "SELECT username FROM registered_users WHERE uid_card = %s"
-        cursor.execute(check_query, (uid_card,))
-        user_record = cursor.fetchone()
-
-        if user_record:
-            # Jika user wujud (belum dipadam dari Streamlit)
-            status = "SUCCESS"
-            username = user_record['username']
-        else:
-            # Jika user TIADA / TELAH DIPADAM dari Streamlit
-            status = "FAILED"
-            username = "UNKNOWN / DELETED"
-
-        # 📝 REKOD KAN HASIL SEMAKAN KE DALAM ACCESS_LOG
+        # Direct INSERT ke dalam access_log tanpa semak jadual registered_users
         log_query = "INSERT INTO access_log (uid_card, username, status) VALUES (%s, %s, %s)"
         cursor.execute(log_query, (uid_card, username, status))
         conn.commit()
@@ -84,16 +41,15 @@ def insert_log():
         cursor.close()
         conn.close()
 
-        # Pulangkan status kepada ESP32
         return jsonify({
-            "status": status,
-            "username": username
+            "status": "SUCCESS",
+            "message": "Log berjaya disimpan!"
         }), 200
 
     except Exception as e:
         return f"ERROR: {str(e)}", 500
 
-# 3. Main route untuk semak status API
+# Main route untuk semak status API
 @app.route('/')
 def home():
     return "Smart Door Access API Online!"
