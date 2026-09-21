@@ -301,5 +301,3 @@ if st.session_state["logged_in"]:
     main_dashboard()
 else:
     login_page()
-
-tambah sini
