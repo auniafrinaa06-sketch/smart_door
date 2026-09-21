@@ -106,38 +106,6 @@ def color_status(val):
         return 'color: #c62828; font-weight: bold;'
     return ''
 
-# ---------------------------------------------------------
-# FUNGSI PENGURUSAN USER (GET & DELETE)
-# ---------------------------------------------------------
-def get_registered_users():
-    conn = None
-    try:
-        conn = create_connection()
-        query = "SELECT id, uid_card, username, user_type, created_at FROM registered_users ORDER BY id DESC"
-        df = pd.read_sql(query, conn)
-        return df
-    except Exception as e:
-        return pd.DataFrame()
-    finally:
-        if conn and conn.is_connected():
-            conn.close()
-
-def delete_user_by_id(user_id):
-    conn = None
-    try:
-        conn = create_connection()
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM registered_users WHERE id = %s", (user_id,))
-        conn.commit()
-        cursor.close()
-        return True
-    except Exception as e:
-        st.error(f"Gagal memadam pengguna: {e}")
-        return False
-    finally:
-        if conn and conn.is_connected():
-            conn.close()
-
 def clear_db_logs():
     conn = None
     try:
@@ -199,79 +167,56 @@ def main_dashboard():
     st.markdown('<div class="main-title">🔑 Smart Door Access System</div>', unsafe_allow_html=True)
     st.markdown('<div class="sub-title">Real-Time Access Control & Monitoring Dashboard</div>', unsafe_allow_html=True)
 
-    # TAB SIKAP / FUNGSI
-    tab1, tab2 = st.tabs(["📊 Access Logs", "👥 Registered Users (Delete/Manage)"])
+    # PAPARAN UTAMA LOG AKSES
+    df = get_db_data()
+    if not df.empty:
+        total_logs = len(df)
+        success_logs = len(df[df['status'].astype(str).str.upper().isin(['SUCCESS', 'GRANTED'])])
+        failed_logs = len(df[df['status'].astype(str).str.upper().isin(['FAILED', 'DENIED'])])
+        
+        col1, col2, col3 = st.columns(3)
+        col1.metric(label="📊 Total Scans", value=total_logs)
+        col2.metric(label="✅ Access Granted", value=success_logs)
+        col3.metric(label="❌ Access Denied", value=failed_logs)
 
-    with tab1:
-        df = get_db_data()
-        if not df.empty:
-            total_logs = len(df)
-            success_logs = len(df[df['status'].astype(str).str.upper().isin(['SUCCESS', 'GRANTED'])])
-            failed_logs = len(df[df['status'].astype(str).str.upper().isin(['FAILED', 'DENIED'])])
+        st.markdown("---")
+
+        # SUSUNAN: PIE CHART (KIRI) + JADUAL LOG (KANAN)
+        chart_col, log_col = st.columns([1, 1.6])
+        
+        with chart_col:
+            st.subheader("📊 Access Status")
+            status_counts = df['status'].value_counts().reset_index()
+            status_counts.columns = ['Status', 'Count']
             
-            col1, col2, col3 = st.columns(3)
-            col1.metric(label="📊 Total Scans", value=total_logs)
-            col2.metric(label="✅ Access Granted", value=success_logs)
-            col3.metric(label="❌ Access Denied", value=failed_logs)
+            fig = px.pie(
+                status_counts, 
+                values='Count', 
+                names='Status', 
+                color='Status',
+                color_discrete_map={
+                    'SUCCESS': '#2e7d32', 
+                    'FAILED': '#c62828', 
+                    'GRANTED': '#2e7d32', 
+                    'DENIED': '#c62828'
+                },
+                hole=0.45
+            )
+            fig.update_layout(
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                font=dict(color='#fbcfe8'),
+                margin=dict(t=10, b=10, l=10, r=10),
+                height=350
+            )
+            st.plotly_chart(fig, use_container_width=True)
 
-            st.markdown("---")
-
-            # SUSUNAN: PIE CHART (KIRI) + JADUAL LOG (KANAN)
-            chart_col, log_col = st.columns([1, 1.6])
-            
-            with chart_col:
-                st.subheader("📊 Access Status")
-                status_counts = df['status'].value_counts().reset_index()
-                status_counts.columns = ['Status', 'Count']
-                
-                fig = px.pie(
-                    status_counts, 
-                    values='Count', 
-                    names='Status', 
-                    color='Status',
-                    color_discrete_map={
-                        'SUCCESS': '#2e7d32', 
-                        'FAILED': '#c62828', 
-                        'GRANTED': '#2e7d32', 
-                        'DENIED': '#c62828'
-                    },
-                    hole=0.45
-                )
-                fig.update_layout(
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    font=dict(color='#fbcfe8'),
-                    margin=dict(t=10, b=10, l=10, r=10),
-                    height=350
-                )
-                st.plotly_chart(fig, use_container_width=True)
-
-            with log_col:
-                st.subheader("📋 Recent Access Logs")
-                styled_df = df.style.map(color_status, subset=['status'])
-                st.dataframe(styled_df, use_container_width=True, height=350)
-        else:
-            st.info("No access log records found.")
-
-    # 🔴 TAB PENGURUSAN USER
-    with tab2:
-        st.subheader("🗑️ Pengurusan Pengguna Berdaftar")
-        st.caption("Padamkan kad RFID atau Fingerprint dari pangkalan data di sini.")
-
-        users_df = get_registered_users()
-        if not users_df.empty:
-            for idx, row in users_df.iterrows():
-                col_info, col_btn = st.columns([4, 1])
-                with col_info:
-                    st.markdown(f"**Nama:** {row['username']} | **ID/UID:** `{row['uid_card']}` | **Jenis:** {row['user_type']}")
-                with col_btn:
-                    if st.button(f"🗑️ Padam", key=f"del_{row['id']}"):
-                        if delete_user_by_id(row['id']):
-                            st.success(f"Pengguna {row['username']} berjaya dipadam!")
-                            st.rerun()
-                st.markdown("<hr style='margin: 5px 0; border-color: rgba(244, 114, 182, 0.2);'>", unsafe_allow_html=True)
-        else:
-            st.info("Tiada pengguna berdaftar dijumpai dalam pangkalan data.")
+        with log_col:
+            st.subheader("📋 Recent Access Logs")
+            styled_df = df.style.map(color_status, subset=['status'])
+            st.dataframe(styled_df, use_container_width=True, height=350)
+    else:
+        st.info("No access log records found.")
 
 # ROUTING
 if st.session_state["logged_in"]:
